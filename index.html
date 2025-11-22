@@ -1,1 +1,203 @@
-<!-- index.html placeholder --> 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>POS – Facturación Electrónica DIAN</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+      margin: 0;
+    }
+
+    h1 {
+      background: #005eff;
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.15);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    table th, table td {
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+    }
+
+    table th {
+      background: #007bff;
+      color: white;
+    }
+
+    .btn {
+      background: #007bff;
+      color: white;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      margin-top: 20px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .btn:hover {
+      background: #0056d6;
+    }
+
+    #total {
+      font-size: 20px;
+      margin-top: 15px;
+      font-weight: bold;
+      text-align: right;
+    }
+
+    .product-row input {
+      width: 80px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>POS – Facturación Electrónica DIAN</h1>
+
+<div class="container">
+
+  <h2>Agregar producto</h2>
+
+  <div>
+    <input id="nombre" placeholder="Nombre del producto">
+    <input id="precio" type="number" placeholder="Precio">
+    <input id="cantidad" type="number" placeholder="Cantidad">
+    <button class="btn" onclick="agregarProducto()">Agregar</button>
+  </div>
+
+  <table id="tablaProductos">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Precio</th>
+        <th>Cantidad</th>
+        <th>Subtotal</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="total">Total: $0</div>
+
+  <button class="btn" onclick="generarFactura()">Generar Factura Electrónica</button>
+
+  <pre id="respuesta"></pre>
+
+</div>
+
+<script>
+  let carrito = [];
+
+  function agregarProducto() {
+    const nombre = document.getElementById("nombre").value;
+    const precio = parseFloat(document.getElementById("precio").value);
+    const cantidad = parseInt(document.getElementById("cantidad").value);
+
+    if (!nombre || !precio || !cantidad) {
+      alert("Completa todos los campos");
+      return;
+    }
+
+    const producto = {
+      nombre,
+      precio,
+      cantidad,
+      subtotal: precio * cantidad
+    };
+
+    carrito.push(producto);
+    actualizarTabla();
+  }
+
+  function actualizarTabla() {
+    const tbody = document.querySelector("#tablaProductos tbody");
+    tbody.innerHTML = "";
+
+    let total = 0;
+
+    carrito.forEach(prod => {
+      total += prod.subtotal;
+
+      const fila = `
+        <tr>
+          <td>${prod.nombre}</td>
+          <td>${prod.precio}</td>
+          <td>${prod.cantidad}</td>
+          <td>${prod.subtotal}</td>
+        </tr>
+      `;
+      tbody.innerHTML += fila;
+    });
+
+    document.getElementById("total").innerText = "Total: $" + total;
+  }
+
+  async function generarFactura() {
+    if (carrito.length === 0) {
+      alert("Agrega productos primero");
+      return;
+    }
+
+    const datosFactura = {
+      cliente: "Consumidor Final",
+      fecha: new Date().toISOString(),
+      items: carrito
+    };
+
+    document.getElementById("respuesta").innerText = "Generando factura...";
+
+    try {
+      // 1) Generar XML
+      let xml = await fetch("/api/generate-xml", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(datosFactura)
+      }).then(r => r.text());
+
+      // 2) Firmar XML
+      let firmado = await fetch("/api/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ xml })
+      }).then(r => r.text());
+
+      // 3) Enviar a DIAN
+      let respuesta = await fetch("/api/send-dian", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ xml: firmado })
+      }).then(r => r.text());
+
+      document.getElementById("respuesta").innerText = respuesta;
+
+    } catch (err) {
+      document.getElementById("respuesta").innerText = "Error: " + err;
+    }
+  }
+</script>
+
+</body>
+</html>
